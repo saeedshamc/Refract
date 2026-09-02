@@ -1,0 +1,82 @@
+# =============================================================================
+# Prism Echo — .gitignore
+# Love2D / Lua puzzle game
+# =============================================================================
+
+# ── Build & distribution output ──────────────────────────────────────────────
+dist/
+*.love
+*.stackdump
+
+# Packaging temp/staging (created by build/package-windows.ps1)
+dist/_staging/
+_staging/
+_pack.zip
+
+# Standalone fused binaries (generated locally; keep build scripts in repo)
+PrismEcho.exe
+PrismEcho
+
+# ── Operating system ─────────────────────────────────────────────────────────
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# Linux
+*~
+
+# ── Editors & IDEs ───────────────────────────────────────────────────────────
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+*.code-workspace
+
+# Vim / Emacs
+*.swp
+*.swo
+*.swn
+\#*\#
+.\#*
+
+# Cursor (local workspace state)
+.cursor/
+
+# ── Lua / Love2D ─────────────────────────────────────────────────────────────
+*.luac
+*.o
+*.so
+*.dll
+*.dylib
+
+# ── Logs, caches, temp ───────────────────────────────────────────────────────
+*.log
+*.tmp
+*.temp
+*.bak
+.cache/
+
+# ── Archives (manual zip/love packaging outside dist/) ───────────────────────
+*.zip
+*.7z
+*.rar
+
+# ── Secrets & local env (never commit) ───────────────────────────────────────
+.env
+.env.*
+*.pem
+*.key
+credentials.json
+
+# ── Test / coverage (future use) ─────────────────────────────────────────────
+coverage/
+luacov.report.out
+luacov.stats.out
