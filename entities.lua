@@ -137,11 +137,19 @@ function Entities.createMirror(opts)
     local s = size * 0.35
     love.graphics.setColor(0.7, 0.85, 1.0, 0.9)
     love.graphics.setLineWidth(3)
-    if self.rotation % 2 == 0 then
-      love.graphics.line(cx - s, cy + s, cx + s, cy - s)
-    else
-      love.graphics.line(cx - s, cy - s, cx + s, cy + s)
-    end
+    -- Use visualAngle for smooth lever rotation; fall back to discrete rotation
+    local angle = self.visualAngle or (self.rotation * math.pi / 2)
+    -- Mirror line at 45° offset from lever angle
+    local lineAngle = angle + math.pi / 4
+    local dx = math.cos(lineAngle) * s
+    local dy = math.sin(lineAngle) * s
+    love.graphics.line(cx - dx, cy - dy, cx + dx, cy + dy)
+    -- Orientation marker (makes all 4 positions visually distinct)
+    love.graphics.setColor(1, 0.85, 0.4, 0.9)
+    love.graphics.circle("fill",
+      cx + math.cos(angle) * s * 0.55,
+      cy + math.sin(angle) * s * 0.55,
+      size * 0.06)
   end
   return e
 end
@@ -192,11 +200,17 @@ function Entities.createPrism(opts)
   end
   function e.draw(self, cx, cy, size)
     local s = size * 0.32
+    local angle = self.visualAngle or (self.rotation * math.pi / 2)
+    love.graphics.push()
+    love.graphics.translate(cx, cy)
+    love.graphics.rotate(angle)
+    love.graphics.translate(-cx, -cy)
     love.graphics.setColor(1, 1, 1, 0.85)
     love.graphics.polygon("fill",
       cx, cy - s,
       cx + s, cy + s * 0.6,
       cx - s, cy + s * 0.6)
+    love.graphics.pop()
     love.graphics.setColor(1, 0.2, 0.2, 0.7)
     love.graphics.circle("fill", cx + s * 0.5, cy, s * 0.15)
     love.graphics.setColor(0.2, 1, 0.3, 0.7)
@@ -242,6 +256,11 @@ function Entities.createCrystal(opts)
   end
   function e.draw(self, cx, cy, size)
     local s = size * 0.28
+    local angle = self.visualAngle or (self.rotation * math.pi / 2)
+    love.graphics.push()
+    love.graphics.translate(cx, cy)
+    love.graphics.rotate(angle)
+    love.graphics.translate(-cx, -cy)
     love.graphics.setColor(0.5, 0.9, 1.0, 0.7)
     love.graphics.polygon("fill",
       cx, cy - s,
@@ -255,6 +274,7 @@ function Entities.createCrystal(opts)
       cx + s * 0.7, cy,
       cx, cy + s,
       cx - s * 0.7, cy)
+    love.graphics.pop()
   end
   return e
 end
@@ -346,13 +366,51 @@ function Entities.create(entityType, opts)
   error("Unknown entity type: " .. tostring(entityType))
 end
 
---- Rotate entity 90° clockwise (if rotatable).
+--- Rotate entity 90° clockwise (if rotatable). Used internally; prefer lever drag.
 function Entities.rotate(entity)
   if entity and entity.rotatable then
     entity.rotation = (entity.rotation + 1) % 4
+    entity.visualAngle = entity.rotation * (math.pi / 2)
     return true
   end
   return false
+end
+
+--- Set rotation from lever and sync visual angle.
+function Entities.setRotation(entity, rotation)
+  entity.rotation = rotation % 4
+  entity.visualAngle = entity.rotation * (math.pi / 2)
+end
+
+--- Find rotatable entity whose lever knob is under the mouse.
+function Entities.findKnobAt(grid, mx, my)
+  for y = 1, grid.rows do
+    for x = 1, grid.cols do
+      local e = grid:getEntity(x, y)
+      if e and e.rotatable then
+        local cx, cy = grid:gridToScreen(x, y)
+        local Lever = require("lever")
+        if Lever.isKnobHit(cx, cy, grid.cellSize, mx, my) then
+          return e, cx, cy
+        end
+      end
+    end
+  end
+  return nil
+end
+
+--- Draw lever knobs on rotatable entities (call after entity draw).
+function Entities.drawLevers(grid, activeEntity)
+  local Lever = require("lever")
+  for y = 1, grid.rows do
+    for x = 1, grid.cols do
+      local e = grid:getEntity(x, y)
+      if e and e.rotatable then
+        local cx, cy = grid:gridToScreen(x, y)
+        Lever.drawKnob(e, cx, cy, grid.cellSize, e == activeEntity)
+      end
+    end
+  end
 end
 
 --- Update time-based entities (auto-rotating mirrors).

@@ -11,15 +11,23 @@ A 2D light-redirection puzzle game built with [LÖVE (Love2D) 11.4+](https://lov
 love .
 ```
 
-Alternatively, drag the project folder onto the LÖVE executable.
+Alternatively, double-click `run.bat` on Windows.
+
+## Generate & Save Levels
+
+- Menu → **Easy / Medium / Hard** generates a random solvable puzzle
+- Press **G** on the menu for a quick random level
+- **Save** in the HUD writes the layout to your LÖVE save folder
+- Saved levels appear in the menu; completed ones show ✓
 
 ## Controls
 
 | Input | Action |
 |-------|--------|
-| Left-click on entity | Rotate 90° clockwise |
+| Left-click-drag knob | Rotate entity via valve lever |
 | Left-click-drag from inventory | Place entity on grid |
 | R | Restart current level |
+| G | Generate random level (from menu) |
 | ESC | Return to level select |
 
 ## Project Structure
@@ -31,6 +39,9 @@ Prism Echo/
 ├── entities.lua    — Entity types and beam-interaction behavior
 ├── raytracer.lua   — Beam simulation and glow rendering
 ├── level.lua       — Level loading, reset, inventory management
+├── lever.lua       — Valve/lever drag rotation input
+├── levelgen.lua    — Procedural level generation
+├── storage.lua     — Save/load generated levels
 ├── ui.lua          — Menus, HUD, solved animation
 ├── levels/         — Level definition files (level1.lua … level5.lua)
 ├── assets/         — Placeholder for future fonts, sounds, sprites

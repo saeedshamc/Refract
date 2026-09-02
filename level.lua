@@ -28,10 +28,21 @@ local function copyEntity(entity)
     emitColor = entity.emitColor,
     emitDir = entity.emitDir,
   })
+  copy.visualAngle = entity.visualAngle or (entity.rotation * math.pi / 2)
   if copy.rotateTimer ~= nil then
     copy.rotateTimer = 0
   end
   return copy
+end
+
+--- Load a saved generated level by storage id.
+function Level.loadGenerated(id)
+  local Storage = require("storage")
+  local data = Storage.loadLevel(id)
+  if not data then return nil end
+  data.generatedId = id
+  data.isGenerated = true
+  return Level.fromData(data, 0)
 end
 
 --- Load a level file by index (1-based).
@@ -56,7 +67,10 @@ function Level.fromData(data, index)
   self.emitters = {}
   self.receivers = {}
   self.inventory = data.inventory or {}
-  self.placedInventory = {} -- tracks placed items from inventory
+  self.placedInventory = {}
+  self.seed = data.seed
+  self.generatedId = data.generatedId
+  self.isGenerated = data.isGenerated or false
 
   -- Parse emitters (not on grid cells, but positioned at grid coords)
   for _, em in ipairs(data.emitters or {}) do
@@ -90,6 +104,7 @@ function Level.fromData(data, index)
       rotateInterval = ent.rotateInterval,
       autoRotate = ent.autoRotate,
     })
+    entity.visualAngle = (ent.rotation or 0) * (math.pi / 2)
     self.grid:setEntity(ent.x, ent.y, entity)
   end
 

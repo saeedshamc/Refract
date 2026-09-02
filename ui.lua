@@ -36,7 +36,8 @@ function UI:resize(w, h)
 end
 
 --- Draw the main level-select menu.
-function UI:drawMenu(levelCount)
+function UI:drawMenu(levelCount, savedIndex)
+  savedIndex = savedIndex or { levels = {} }
   love.graphics.setColor(0.07, 0.07, 0.07)
   love.graphics.rectangle("fill", 0, 0, self.windowW, self.windowH)
 
@@ -44,39 +45,73 @@ function UI:drawMenu(levelCount)
   love.graphics.setColor(0.9, 0.95, 1.0)
   local title = "Prism Echo"
   local tw = self.titleFont:getWidth(title)
-  love.graphics.print(title, (self.windowW - tw) / 2, self.windowH * 0.15)
+  love.graphics.print(title, (self.windowW - tw) / 2, self.windowH * 0.08)
 
   love.graphics.setFont(self.font)
   love.graphics.setColor(0.6, 0.65, 0.75)
-  local sub = "Guide light through prisms and mirrors"
+  local sub = "Drag levers to redirect light  |  G = new random level"
   local sw = self.font:getWidth(sub)
-  love.graphics.print(sub, (self.windowW - sw) / 2, self.windowH * 0.15 + 45)
+  love.graphics.print(sub, (self.windowW - sw) / 2, self.windowH * 0.08 + 42)
 
-  -- Level buttons
-  local btnW, btnH = 220, 44
-  local startY = self.windowH * 0.35
+  -- Two columns: built-in levels (left) and generated (right)
+  local leftX = self.windowW * 0.12
+  local rightX = self.windowW * 0.55
+  local btnW, btnH = 200, 40
+
+  love.graphics.setColor(0.5, 0.6, 0.8, 0.8)
+  love.graphics.setFont(self.smallFont)
+  love.graphics.print("Campaign Levels", leftX, self.windowH * 0.22)
+
+  local startY = self.windowH * 0.28
   for i = 1, levelCount do
-    local bx = (self.windowW - btnW) / 2
-    local by = startY + (i - 1) * (btnH + 12)
-    local hovered = self:isMouseOver(bx, by, btnW, btnH)
-    if hovered then
-      love.graphics.setColor(0.25, 0.35, 0.55, 0.9)
-    else
-      love.graphics.setColor(0.15, 0.18, 0.28, 0.9)
+    local by = startY + (i - 1) * (btnH + 10)
+    self:drawMenuButton(leftX, by, btnW, btnH, "Level " .. i, "level_" .. i)
+  end
+
+  -- Generate buttons
+  love.graphics.setColor(0.5, 0.8, 0.6, 0.8)
+  love.graphics.print("Generate New", rightX, self.windowH * 0.22)
+
+  local diffs = { "Easy", "Medium", "Hard" }
+  for i, label in ipairs(diffs) do
+    local by = startY + (i - 1) * (btnH + 10)
+    self:drawMenuButton(rightX, by, btnW, btnH, label, "gen_" .. i)
+  end
+
+  -- Saved generated levels
+  local saved = savedIndex.levels or {}
+  if #saved > 0 then
+    love.graphics.setColor(0.8, 0.7, 0.5, 0.8)
+    love.graphics.print("Saved Levels", rightX, startY + 3 * (btnH + 10) + 10)
+    local sy = startY + 3 * (btnH + 10) + 30
+    for i, entry in ipairs(saved) do
+      if i > 4 then break end -- show max 4
+      local by = sy + (i - 1) * (btnH + 8)
+      local label = entry.name .. (entry.completed and " ✓" or "")
+      self:drawMenuButton(rightX, by, btnW, btnH, label, "saved_" .. entry.id)
     end
-    love.graphics.rectangle("fill", bx, by, btnW, btnH, 6, 6)
-    love.graphics.setColor(0.7, 0.8, 1.0, hovered and 1 or 0.7)
-    love.graphics.setLineWidth(1.5)
-    love.graphics.rectangle("line", bx, by, btnW, btnH, 6, 6)
-    love.graphics.setColor(1, 1, 1, 0.9)
-    local label = "Level " .. i
-    love.graphics.print(label, bx + (btnW - self.font:getWidth(label)) / 2, by + 12)
   end
 
   love.graphics.setFont(self.smallFont)
   love.graphics.setColor(0.4, 0.45, 0.55)
-  local hint = "Click a level to begin  |  ESC to return to menu"
-  love.graphics.print(hint, (self.windowW - self.smallFont:getWidth(hint)) / 2, self.windowH - 40)
+  local hint = "Grab the valve knob and rotate with mouse to aim light"
+  love.graphics.print(hint, (self.windowW - self.smallFont:getWidth(hint)) / 2, self.windowH - 30)
+end
+
+function UI:drawMenuButton(bx, by, btnW, btnH, label, _)
+  local hovered = self:isMouseOver(bx, by, btnW, btnH)
+  if hovered then
+    love.graphics.setColor(0.25, 0.35, 0.55, 0.9)
+  else
+    love.graphics.setColor(0.15, 0.18, 0.28, 0.9)
+  end
+  love.graphics.rectangle("fill", bx, by, btnW, btnH, 6, 6)
+  love.graphics.setColor(0.7, 0.8, 1.0, hovered and 1 or 0.7)
+  love.graphics.setLineWidth(1.5)
+  love.graphics.rectangle("line", bx, by, btnW, btnH, 6, 6)
+  love.graphics.setColor(1, 1, 1, 0.9)
+  love.graphics.setFont(self.font)
+  love.graphics.print(label, bx + (btnW - self.font:getWidth(label)) / 2, by + 10)
 end
 
 --- Draw in-game HUD bar at the bottom.
@@ -89,10 +124,11 @@ function UI:drawHUD(level, grid)
   love.graphics.setColor(0.85, 0.9, 1.0)
   love.graphics.print(level.name, 16, hudY + 12)
 
-  -- Restart button
+  -- Button layout (right to left): Restart | Save | Menu
   local rbW, rbH = 90, 32
-  local rbx = self.windowW - rbW - 16
   local rby = hudY + (self.hudHeight - rbH) / 2
+  local rbx = self.windowW - rbW - 16
+
   local rbHover = self:isMouseOver(rbx, rby, rbW, rbH)
   love.graphics.setColor(rbHover and 0.35 or 0.22, rbHover and 0.25 or 0.18, 0.18, 0.9)
   love.graphics.rectangle("fill", rbx, rby, rbW, rbH, 4, 4)
@@ -102,9 +138,18 @@ function UI:drawHUD(level, grid)
   love.graphics.setFont(self.smallFont)
   love.graphics.print("Restart (R)", rbx + 8, rby + 9)
 
-  -- Menu button
+  local sbW = 70
+  local sbx = rbx - sbW - 10
+  local sbHover = self:isMouseOver(sbx, rby, sbW, rbH)
+  love.graphics.setColor(sbHover and 0.2 or 0.15, sbHover and 0.35 or 0.28, 0.2, 0.9)
+  love.graphics.rectangle("fill", sbx, rby, sbW, rbH, 4, 4)
+  love.graphics.setColor(0.5, 1, 0.6, 0.8)
+  love.graphics.rectangle("line", sbx, rby, sbW, rbH, 4, 4)
+  love.graphics.setColor(1, 1, 1, 0.85)
+  love.graphics.print("Save", sbx + 16, rby + 9)
+
   local mbW = 80
-  local mbx = rbx - mbW - 10
+  local mbx = sbx - mbW - 10
   local mbHover = self:isMouseOver(mbx, rby, mbW, rbH)
   love.graphics.setColor(mbHover and 0.25 or 0.18, mbHover and 0.28 or 0.2, 0.35, 0.9)
   love.graphics.rectangle("fill", mbx, rby, mbW, rbH, 4, 4)
@@ -227,21 +272,45 @@ function UI:isMouseOver(x, y, w, h)
   return mx >= x and mx <= x + w and my >= y and my <= y + h
 end
 
---- Handle menu click; returns selected level index or nil.
-function UI:handleMenuClick(levelCount)
-  local btnW, btnH = 220, 44
-  local startY = self.windowH * 0.35
+--- Handle menu click; returns action, arg.
+function UI:handleMenuClick(levelCount, savedIndex)
+  savedIndex = savedIndex or { levels = {} }
+  local leftX = self.windowW * 0.12
+  local rightX = self.windowW * 0.55
+  local btnW, btnH = 200, 40
+  local startY = self.windowH * 0.28
+
+  -- Campaign levels
   for i = 1, levelCount do
-    local bx = (self.windowW - btnW) / 2
-    local by = startY + (i - 1) * (btnH + 12)
-    if self:isMouseOver(bx, by, btnW, btnH) then
-      return i
+    local by = startY + (i - 1) * (btnH + 10)
+    if self:isMouseOver(leftX, by, btnW, btnH) then
+      return "level", i
     end
   end
+
+  -- Generate buttons
+  for i = 1, 3 do
+    local by = startY + (i - 1) * (btnH + 10)
+    if self:isMouseOver(rightX, by, btnW, btnH) then
+      return "generate", i
+    end
+  end
+
+  -- Saved levels
+  local saved = savedIndex.levels or {}
+  local sy = startY + 3 * (btnH + 10) + 30
+  for i, entry in ipairs(saved) do
+    if i > 4 then break end
+    local by = sy + (i - 1) * (btnH + 8)
+    if self:isMouseOver(rightX, by, btnW, btnH) then
+      return "saved", entry.id
+    end
+  end
+
   return nil
 end
 
---- Handle HUD button clicks. Returns "restart", "menu", or nil.
+--- Handle HUD button clicks. Returns "restart", "menu", "save", or nil.
 function UI:handleHUDClick()
   local hudY = self.windowH - self.hudHeight
   local rbW, rbH = 90, 32
@@ -250,8 +319,12 @@ function UI:handleHUDClick()
 
   if self:isMouseOver(rbx, rby, rbW, rbH) then return "restart" end
 
+  local sbW = 70
+  local sbx = rbx - sbW - 10
+  if self:isMouseOver(sbx, rby, sbW, rbH) then return "save" end
+
   local mbW = 80
-  local mbx = rbx - mbW - 10
+  local mbx = sbx - mbW - 10
   if self:isMouseOver(mbx, rby, mbW, rbH) then return "menu" end
 
   return nil
