@@ -10,6 +10,8 @@ local Entities = require("entities")
 local UI = {}
 UI.__index = UI
 
+local SOLVED_ADVANCE_DELAY = 1.2
+
 function UI.new()
   local self = setmetatable({}, UI)
   self.state = "menu" -- "menu", "playing", "solved"
@@ -234,10 +236,10 @@ function UI:drawSolvedOverlay()
   love.graphics.print(text, bx + (bannerW - self.titleFont:getWidth(text)) / 2, by + 16)
   love.graphics.pop()
 
-  if self.solvedTimer < 1.0 then
+  if self.solvedTimer < SOLVED_ADVANCE_DELAY then
     love.graphics.setFont(self.smallFont)
     love.graphics.setColor(1, 1, 1, 0.7)
-    local hint = "Click to continue..."
+    local hint = "Next level..."
     love.graphics.print(hint, (self.windowW - self.smallFont:getWidth(hint)) / 2, by + bannerH + 20)
   end
 end

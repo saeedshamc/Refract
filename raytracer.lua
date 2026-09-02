@@ -1,13 +1,8 @@
 --[[
-  raytracer.lua — Beam simulation engine for Prism Echo.
+  raytracer.lua — Continuous-angle beam simulation for Prism Echo.
 
-  Traces light beams from emitters across the grid using a deterministic
-  cell-by-cell algorithm. Supports branching (prisms), merging (combiners),
-  and guards against infinite loops via a global step limit.
-
-  Returns:
-    segments  — list of {x1,y1,x2,y2,color} screen-space line segments for rendering
-    receivers — list of receiver entities with updated .satisfied flags
+  Beams travel at any angle (radians) controlled by entity lever rotation.
+  Mirrors use specular reflection from visualAngle; no 90°/180° snapping.
 ]]
 
 local Entities = require("entities")
@@ -15,109 +10,116 @@ local Entities = require("entities")
 local Raytracer = {}
 
 local MAX_STEPS = 500
+local EPS = 1e-6
 
---- Trace a single beam from (gx,gy) in direction dirIdx with given color.
--- Returns path segments (grid coords) and combiner inputs collected.
-local function traceBeam(grid, gx, gy, dirIdx, color, segments, combinerInputs, stepBudget, receivers)
-  local dx, dy = Entities.getDir(dirIdx)
-
-  while stepBudget > 0 do
-    stepBudget = stepBudget - 1
-
-    -- Move to next cell
-    local nx, ny = gx + dx, gy + dy
-    if not grid:inBounds(nx, ny) then
-      -- Draw segment to grid edge
-      local ex = gx + dx * 0.5
-      local ey = gy + dy * 0.5
-      table.insert(segments, {
-        x1 = gx, y1 = gy, x2 = ex, y2 = ey, color = color
-      })
-      break
-    end
-
-    -- Segment from current cell center to next cell center
-    table.insert(segments, {
-      x1 = gx, y1 = gy, x2 = nx, y2 = ny, color = color
-    })
-
-    gx, gy = nx, ny
-    local entity = grid:getEntity(gx, gy)
-
-    if not entity then
-      -- Empty cell: continue straight
-      dx, dy = Entities.getDir(dirIdx)
-    elseif entity.type == "combiner" then
-      -- Record input; merging handled after all primary traces
-      local key = gx .. "," .. gy
-      if not combinerInputs[key] then
-        combinerInputs[key] = { x = gx, y = gy, inputs = {} }
-      end
-      -- entryDir is opposite of travel direction
-      local entryDir = Entities.oppositeDir(Entities.dirIndex(dx, dy))
-      table.insert(combinerInputs[key].inputs, {
-        entryDir = entryDir,
-        color = color,
-        travelDir = Entities.dirIndex(dx, dy),
-      })
-      break
-    elseif entity.type == "receiver" then
-      entity.onBeamEnter(entity, Entities.oppositeDir(Entities.dirIndex(dx, dy)), color)
-      table.insert(receivers, entity)
-      break
-    elseif entity.onBeamEnter then
-      local entryDir = Entities.oppositeDir(Entities.dirIndex(dx, dy))
-      local outputs = entity.onBeamEnter(entity, entryDir, color)
-      if not outputs or #outputs == 0 then
-        break -- absorbed
-      elseif #outputs == 1 then
-        dirIdx = outputs[1].dir
-        color = outputs[1].color
-        dx, dy = Entities.getDir(dirIdx)
-      else
-        -- Branch (prism split): trace each outgoing beam independently
-        for _, out in ipairs(outputs) do
-          stepBudget = traceBeam(grid, gx, gy, out.dir, out.color, segments, combinerInputs, stepBudget, receivers)
-        end
-        break
-      end
-    else
-      break
-    end
-  end
-
-  return stepBudget
+--- Cell containing grid-space point (cell centers at integer coords).
+local function cellAt(x, y)
+  return math.floor(x + 0.5), math.floor(y + 0.5)
 end
 
--- Note: refractive crystal uses a discrete 90° bend on the orthogonal grid
--- (rotation offsets which adjacent cardinal direction is chosen). This approximates
--- partial refraction without requiring diagonal grid cells.
+--- Distance along ray to exit current cell boundary.
+local function nextBoundaryT(x, y, dx, dy, cx, cy)
+  local tMin = math.huge
+  if dx > EPS then
+    local t = (cx + 0.5 - x) / dx
+    if t > EPS then tMin = math.min(tMin, t) end
+  elseif dx < -EPS then
+    local t = (cx - 0.5 - x) / dx
+    if t > EPS then tMin = math.min(tMin, t) end
+  end
+  if dy > EPS then
+    local t = (cy + 0.5 - y) / dy
+    if t > EPS then tMin = math.min(tMin, t) end
+  elseif dy < -EPS then
+    local t = (cy - 0.5 - y) / dy
+    if t > EPS then tMin = math.min(tMin, t) end
+  end
+  return tMin
+end
 
---- Process combiner cells: merge beams from different edges, continue tracing.
-local function processCombiners(grid, combinerInputs, segments, stepBudget, receivers)
+--- Trace one continuous beam; splits recursively for prisms.
+local function traceContinuous(grid, x, y, angle, color, segments, budget, receivers, visited, combinerInputs)
+  visited = visited or {}
+  combinerInputs = combinerInputs or {}
+  local cx, cy = cellAt(x, y)
+
+  for _ = 1, budget do
+    if not grid:inBounds(cx, cy) then break end
+
+    local vkey = cx .. "," .. cy .. "," .. math.floor(angle * 57.2958)
+    visited[vkey] = (visited[vkey] or 0) + 1
+    if visited[vkey] > 4 then break end
+
+    local dx, dy = math.cos(angle), math.sin(angle)
+    local t = nextBoundaryT(x, y, dx, dy, cx, cy)
+    if t == math.huge then break end
+
+    local nx, ny = x + dx * t, y + dy * t
+    table.insert(segments, { x1 = x, y1 = y, x2 = nx, y2 = ny, color = color })
+
+    local ncx, ncy = cellAt(nx + dx * EPS, ny + dy * EPS)
+    if not grid:inBounds(ncx, ncy) then break end
+
+    x = nx + dx * EPS
+    y = ny + dy * EPS
+    cx, cy = ncx, ncy
+
+    local entity = grid:getEntity(cx, cy)
+    if not entity then
+      -- empty cell
+    elseif entity.type == "wall" then
+      break
+    elseif entity.type == "receiver" then
+      if color == entity.requiredColor then entity.satisfied = true end
+      table.insert(receivers, entity)
+      break
+    elseif entity.type == "combiner" then
+      local key = cx .. "," .. cy
+      combinerInputs[key] = combinerInputs[key] or { x = cx, y = cy, inputs = {} }
+      table.insert(combinerInputs[key].inputs, { angle = angle, color = color })
+      return
+    elseif entity.type == "mirror" or entity.type == "auto_mirror" then
+      angle = Entities.reflectMirror(entity, angle)
+    elseif entity.type == "prism" then
+      if Entities.isWhite(color) then
+        local base = Entities.getAngle(entity)
+        for i, beamColor in ipairs({ "red", "green", "blue" }) do
+          local splitAngle = base + (i - 1) * (2 * math.pi / 3)
+          traceContinuous(grid, x, y, splitAngle, beamColor, segments, budget - 1, receivers, visited, combinerInputs)
+        end
+        return
+      else
+        angle = angle + math.pi
+      end
+    elseif entity.type == "crystal" then
+      local orient = Entities.getAngle(entity)
+      angle = orient + (angle - orient) * 0.5 + math.pi / 5
+    end
+  end
+end
+
+local function angleDiff(a, b)
+  local d = math.abs(a - b) % (2 * math.pi)
+  return math.min(d, 2 * math.pi - d)
+end
+
+local function processCombiners(grid, combinerInputs, segments, receivers)
   for _, combo in pairs(combinerInputs) do
     local inputs = combo.inputs
     if #inputs == 0 then goto continue end
 
     if #inputs == 1 then
-      -- Single beam passes through in original travel direction
-      local inp = inputs[1]
-      local outDir = inp.travelDir
-      stepBudget = traceBeam(grid, combo.x, combo.y, outDir, inp.color, segments, {}, stepBudget, receivers)
-    elseif #inputs >= 2 then
-      -- Find two beams from different entry edges with different colors
+      traceContinuous(grid, combo.x, combo.y, inputs[1].angle, inputs[1].color, segments, MAX_STEPS, receivers, {}, {})
+    else
       local merged = false
       for i = 1, #inputs do
         for j = i + 1, #inputs do
           local a, b = inputs[i], inputs[j]
-          if a.entryDir ~= b.entryDir and a.color ~= b.color then
+          if a.color ~= b.color and angleDiff(a.angle, b.angle) > math.pi / 4 then
             local mixedName = Entities.mixColors(
-              Entities.getColorRGB(a.color),
-              Entities.getColorRGB(b.color)
+              Entities.getColorRGB(a.color), Entities.getColorRGB(b.color)
             )
-            -- Output continues in the direction of the first beam's travel
-            local outDir = a.travelDir
-            stepBudget = traceBeam(grid, combo.x, combo.y, outDir, mixedName, segments, {}, stepBudget, receivers)
+            traceContinuous(grid, combo.x, combo.y, a.angle, mixedName, segments, MAX_STEPS, receivers, {}, {})
             merged = true
             break
           end
@@ -125,9 +127,8 @@ local function processCombiners(grid, combinerInputs, segments, stepBudget, rece
         if merged then break end
       end
       if not merged then
-        -- No valid pair: each beam passes through individually
         for _, inp in ipairs(inputs) do
-          stepBudget = traceBeam(grid, combo.x, combo.y, inp.travelDir, inp.color, segments, {}, stepBudget, receivers)
+          traceContinuous(grid, combo.x, combo.y, inp.angle, inp.color, segments, MAX_STEPS, receivers, {}, {})
         end
       end
     end
@@ -135,12 +136,8 @@ local function processCombiners(grid, combinerInputs, segments, stepBudget, rece
   end
 end
 
---- Main trace function: recompute all beam paths from emitters.
--- @param grid Grid       The game grid with entities
--- @param emitters table  List of emitter entities (with x, y, emitDir, emitColor)
--- @return segments table, allSatisfied boolean, satisfiedTicks number
-function Raytracer.trace(grid, emitters, receivers)
-  -- Reset receiver satisfaction
+--- Main trace: recompute all beam paths from emitters.
+function Raytracer.trace(grid, emitters)
   local receiverList = {}
   for y = 1, grid.rows do
     for x = 1, grid.cols do
@@ -153,21 +150,19 @@ function Raytracer.trace(grid, emitters, receivers)
   end
 
   local segments = {}
-  local combinerInputs = {}
-  local stepBudget = MAX_STEPS
   local hitReceivers = {}
+  local combinerInputs = {}
 
   for _, emitter in ipairs(emitters) do
-    if stepBudget <= 0 then break end
-    stepBudget = traceBeam(
-      grid, emitter.x, emitter.y, emitter.emitDir, emitter.emitColor,
-      segments, combinerInputs, stepBudget, hitReceivers
+    local angle = Entities.dirToAngle(emitter.emitDir)
+    traceContinuous(
+      grid, emitter.x, emitter.y, angle, emitter.emitColor,
+      segments, MAX_STEPS, hitReceivers, {}, combinerInputs
     )
   end
 
-  processCombiners(grid, combinerInputs, segments, stepBudget, hitReceivers)
+  processCombiners(grid, combinerInputs, segments, hitReceivers)
 
-  -- Check if all receivers satisfied
   local allSatisfied = #receiverList > 0
   for _, r in ipairs(receiverList) do
     if not r.satisfied then
@@ -179,7 +174,6 @@ function Raytracer.trace(grid, emitters, receivers)
   return segments, allSatisfied, receiverList
 end
 
---- Convert grid-coordinate segments to screen-coordinate segments for rendering.
 function Raytracer.toScreenSegments(grid, gridSegments)
   local screenSegs = {}
   for _, seg in ipairs(gridSegments) do
@@ -192,7 +186,6 @@ function Raytracer.toScreenSegments(grid, gridSegments)
   return screenSegs
 end
 
---- Draw beam segments with layered glow effect.
 function Raytracer.drawBeams(segments)
   local glowLayers = {
     { width = 12, alpha = 0.06 },
@@ -210,7 +203,6 @@ function Raytracer.drawBeams(segments)
     end
   end
 
-  -- Bright core
   for _, seg in ipairs(segments) do
     local rgb = Entities.getColorRGB(seg.color)
     love.graphics.setColor(rgb[1], rgb[2], rgb[3], 1)

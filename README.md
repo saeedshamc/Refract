@@ -13,6 +13,30 @@ love .
 
 Alternatively, double-click `run.bat` on Windows.
 
+## Building Standalone Executables
+
+**Windows** — produces `dist/PrismEcho.exe` (no LÖVE install needed for players):
+
+```powershell
+.\build\package-windows.bat
+```
+
+**Linux** — produces `dist/PrismEcho`:
+
+```bash
+chmod +x build/package-linux.sh
+./build/package-linux.sh
+```
+
+Build output goes to `dist/` (gitignored).
+
+## Campaign Progression
+
+- Completing a campaign level shows **Solved!** then auto-loads the next level (~1.2 s)
+- Click during the celebration to skip ahead
+- After Level 5, returns to the menu
+- Generated levels auto-load another random puzzle at the same difficulty
+
 ## Generate & Save Levels
 
 - Menu → **Easy / Medium / Hard** generates a random solvable puzzle
@@ -24,7 +48,8 @@ Alternatively, double-click `run.bat` on Windows.
 
 | Input | Action |
 |-------|--------|
-| Left-click-drag knob | Rotate entity via valve lever |
+| Left-click-drag knob | Rotate entity freely via valve lever (any angle) |
+| Left-click during Solved! | Skip to next level |
 | Left-click-drag from inventory | Place entity on grid |
 | R | Restart current level |
 | G | Generate random level (from menu) |
@@ -43,8 +68,11 @@ Prism Echo/
 ├── levelgen.lua    — Procedural level generation
 ├── storage.lua     — Save/load generated levels
 ├── ui.lua          — Menus, HUD, solved animation
+├── build/          — Packaging scripts (Windows .exe, Linux binary)
+├── run.bat         — Quick launch on Windows
 ├── levels/         — Level definition files (level1.lua … level5.lua)
 ├── assets/         — Placeholder for future fonts, sounds, sprites
+├── .gitignore
 └── README.md
 ```
 

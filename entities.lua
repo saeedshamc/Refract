@@ -47,6 +47,35 @@ function Entities.oppositeDir(dirIdx)
   return ((dirIdx - 1 + 2) % 4) + 1
 end
 
+--- Convert cardinal direction index to radians (continuous beam angle).
+function Entities.dirToAngle(dirIdx)
+  local dx, dy = Entities.getDir(dirIdx)
+  return math.atan2(dy, dx)
+end
+
+--- Get entity lever angle in radians (continuous).
+function Entities.getAngle(entity)
+  if entity.visualAngle ~= nil then
+    return entity.visualAngle
+  end
+  return (entity.rotation or 0) * (math.pi / 2)
+end
+
+--- Reflect incoming beam angle off a mirror entity (specular reflection).
+function Entities.reflectMirror(entity, inAngle)
+  local lineAngle = Entities.getAngle(entity) + math.pi / 4
+  local nx, ny = -math.sin(lineAngle), math.cos(lineAngle)
+  local dx, dy = math.cos(inAngle), math.sin(inAngle)
+  local dot = dx * nx + dy * ny
+  if dot > 0 then
+    nx, ny = -nx, -ny
+    dot = -dot
+  end
+  local rx = dx - 2 * dot * nx
+  local ry = dy - 2 * dot * ny
+  return math.atan2(ry, rx)
+end
+
 -- ── Color helpers ───────────────────────────────────────────────────────────
 
 Entities.COLORS = {
@@ -164,10 +193,9 @@ function Entities.createAutoMirror(opts)
   function e.update(self, dt)
     if not self.autoRotate then return end
     self.rotateTimer = self.rotateTimer + dt
-    if self.rotateTimer >= self.rotateInterval then
-      self.rotateTimer = self.rotateTimer - self.rotateInterval
-      self.rotation = (self.rotation + 1) % 4
-    end
+    -- Smooth continuous rotation (90° every rotateInterval seconds)
+    local speed = (math.pi / 2) / self.rotateInterval
+    self.visualAngle = (self.visualAngle or 0) + speed * dt
   end
   function e.draw(self, cx, cy, size)
     Entities.createMirror({}).draw(self, cx, cy, size)

@@ -26,6 +26,14 @@ local SATISFIED_HOLD_TIME = 0.15
 -- Lever drag state: { entity, cx, cy }
 local leverDrag = nil
 
+-- Progression: "campaign", "generated", "saved"
+local playMode = nil
+local campaignIndex = 1
+local generatedDifficulty = 1
+local advancePending = false
+
+local SOLVED_ADVANCE_DELAY = 1.2
+
 function love.load()
   love.window.setTitle("Prism Echo")
   love.window.setMode(960, 640, { resizable = true, minwidth = 640, minheight = 480 })
@@ -40,10 +48,23 @@ end
 function love.update(dt)
   ui:update(dt)
 
-  if ui.state ~= "playing" and ui.state ~= "solved" then return end
+  if ui.state == "solved" and currentLevel and not advancePending then
+    if ui.solvedTimer >= SOLVED_ADVANCE_DELAY then
+      advancePending = true
+      advanceToNextLevel()
+    end
+    return
+  end
+
+  if ui.state ~= "playing" then return end
   if not currentLevel then return end
 
   Entities.updateAll(currentLevel.grid, dt)
+
+  if leverDrag and love.mouse.isDown(1) then
+    local mx, my = love.mouse.getPosition()
+    Lever.updateDrag(leverDrag.entity, leverDrag.cx, leverDrag.cy, mx, my)
+  end
 
   local gridSegments
   gridSegments, allSatisfied = Raytracer.trace(
@@ -118,10 +139,9 @@ function love.mousepressed(x, y, button)
   end
 
   if ui.state == "solved" then
-    if ui.solvedTimer >= 0.5 then
-      ui.state = "menu"
-      ui:resetSolved()
-      currentLevel = nil
+    if ui.solvedTimer >= 0.4 then
+      advancePending = true
+      advanceToNextLevel()
     end
     return
   end
@@ -212,6 +232,8 @@ end
 -- ── Helpers ───────────────────────────────────────────────────────────────────
 
 function startLevel(index)
+  playMode = "campaign"
+  campaignIndex = index
   currentLevel = Level.load(index)
   currentLevel.grid:resize(
     love.graphics.getWidth(), love.graphics.getHeight(), ui.hudHeight
@@ -221,9 +243,12 @@ function startLevel(index)
   satisfiedHoldTimer = 0
   beamSegments = {}
   leverDrag = nil
+  advancePending = false
 end
 
 function startGeneratedLevel(difficulty)
+  playMode = "generated"
+  generatedDifficulty = difficulty or 1
   local seed = os.time() + math.floor(love.timer.getTime() * 1000)
   local data = LevelGen.generate(seed, difficulty or 1)
   data.isGenerated = true
@@ -238,9 +263,11 @@ function startGeneratedLevel(difficulty)
   satisfiedHoldTimer = 0
   beamSegments = {}
   leverDrag = nil
+  advancePending = false
 end
 
 function startSavedLevel(id)
+  playMode = "saved"
   currentLevel = Level.loadGenerated(id)
   if not currentLevel then return end
   currentLevel.grid:resize(
@@ -251,6 +278,7 @@ function startSavedLevel(id)
   satisfiedHoldTimer = 0
   beamSegments = {}
   leverDrag = nil
+  advancePending = false
 end
 
 function saveCurrentLevel()
@@ -271,4 +299,30 @@ function restartLevel()
   ui:resetSolved()
   satisfiedHoldTimer = 0
   leverDrag = nil
+  advancePending = false
+end
+
+--- After level complete: load next campaign/generated level or return to menu.
+function advanceToNextLevel()
+  ui:resetSolved()
+  satisfiedHoldTimer = 0
+  leverDrag = nil
+  advancePending = false
+
+  if playMode == "campaign" then
+    local nextIndex = campaignIndex + 1
+    if nextIndex <= Level.count() then
+      startLevel(nextIndex)
+    else
+      playMode = nil
+      currentLevel = nil
+      ui.state = "menu"
+    end
+  elseif playMode == "generated" then
+    startGeneratedLevel(generatedDifficulty)
+  else
+    playMode = nil
+    currentLevel = nil
+    ui.state = "menu"
+  end
 end

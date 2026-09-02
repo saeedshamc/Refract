@@ -78,6 +78,9 @@ local function serializeLevel(data)
   for _, ent in ipairs(data.entities or {}) do
     local rot = ent.rotation or 0
     local extra = ""
+    if ent.visualAngle then
+      extra = extra .. ", visualAngle = " .. ent.visualAngle
+    end
     if ent.rotateInterval then
       extra = extra .. ", rotateInterval = " .. ent.rotateInterval
     end
@@ -193,6 +196,7 @@ function Storage.exportFromLevel(level)
         local ent = {
           type = e.type, x = x, y = y,
           rotation = e.rotation,
+          visualAngle = e.visualAngle,
         }
         if e.fixed then ent.fixed = true end
         if e.rotatable == false then ent.rotatable = false end

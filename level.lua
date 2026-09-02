@@ -29,6 +29,7 @@ local function copyEntity(entity)
     emitDir = entity.emitDir,
   })
   copy.visualAngle = entity.visualAngle or (entity.rotation * math.pi / 2)
+  copy.rotation = entity.rotation or 0
   if copy.rotateTimer ~= nil then
     copy.rotateTimer = 0
   end
@@ -104,7 +105,7 @@ function Level.fromData(data, index)
       rotateInterval = ent.rotateInterval,
       autoRotate = ent.autoRotate,
     })
-    entity.visualAngle = (ent.rotation or 0) * (math.pi / 2)
+    entity.visualAngle = ent.visualAngle or (ent.rotation or 0) * (math.pi / 2)
     self.grid:setEntity(ent.x, ent.y, entity)
   end
 
